@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 )
 
 type tasks struct {
@@ -77,6 +78,59 @@ func (t *tasks) GetTaskList() error {
 	return nil
 }
 
+func (t *tasks) runExe(title string, parser func(line string) error, name string, args ...string) error {
+	if title != "" {
+		t.logfile.WriteString(fmt.Sprintf("\n\n...........................:  %s  :...........................\n", title))
+	}
+	cmd := exec.Command(name, args...)
+	// Get a pipe to read from standard out
+	r, _ := cmd.StdoutPipe()
+	// Use the same pipe for standard error
+	cmd.Stderr = cmd.Stdout
+	// Make a new channel which will be used to ensure we get all output
+	done := make(chan bool)
+
+	// Create a scanner which scans r in a line-by-line fashion
+	scanner := bufio.NewScanner(r)
+	scanner.Split(ScanItems)
+	// Use the scanner to scan the output line by line and log it
+	// It's running in a goroutine so that it doesn't block
+	go func() {
+
+		// Read line by line and process it
+		for scanner.Scan() {
+			line := scanner.Text()
+			//HandleLog(label, line)
+			t.logfile.WriteString(line + "\n")
+			parser(line)
+		}
+		// We're all done, unblock the channel
+		done <- true
+
+	}()
+	// Start the command and check for errors
+	err := cmd.Start()
+	t.cmddict[cmd.Process.Pid] = cmd
+	// Wait for all output to be processed
+	<-done
+	// Wait for the command to finish
+	err = cmd.Wait()
+	delete(t.cmddict, cmd.Process.Pid)
+	if err != nil {
+		if exitError, ok := err.(*exec.ExitError); ok {
+			waitStatus := exitError.Sys().(syscall.WaitStatus)
+			t.logfile.WriteString(fmt.Sprintf("ExitCode=%d\n", waitStatus.ExitStatus()))
+		}
+		return err
+	}
+	// Success
+	waitStatus := cmd.ProcessState.Sys().(syscall.WaitStatus)
+	t.logfile.WriteString(fmt.Sprintf("ExitCode=%d\n", waitStatus.ExitStatus()))
+
+	return nil
+
+}
+
 func (t *tasks) ReadInquiry() error {
 
 	Parser := func(sline string) {
@@ -89,7 +143,7 @@ func (t *tasks) ReadInquiry() error {
 		}
 	}
 
-	t.logfile.WriteString("...........................:  Driver Inquiry Data  :...........................")
+	t.logfile.WriteString("\n\n...........................:  Driver Inquiry Data  :...........................\n")
 	cmd := exec.Command("./sg_inq", t.sgName)
 	// Get a pipe to read from standard out
 	r, _ := cmd.StdoutPipe()
@@ -123,6 +177,7 @@ func (t *tasks) ReadInquiry() error {
 	<-done
 	// Wait for the command to finish
 	err = cmd.Wait()
+	delete(t.cmddict, cmd.Process.Pid)
 	if err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
 			waitStatus := exitError.Sys().(syscall.WaitStatus)
@@ -134,5 +189,181 @@ func (t *tasks) ReadInquiry() error {
 	waitStatus := cmd.ProcessState.Sys().(syscall.WaitStatus)
 	t.logfile.WriteString(fmt.Sprintf("ExitCode=%d\n", waitStatus.ExitStatus()))
 
+	return nil
+}
+
+func (t *tasks) DriverIdentifyData() error {
+	// hdparm -I /dev/sdd     //sg_readcap -l /dev/sg4
+	Parser := func(sline string) {
+
+	}
+
+	t.logfile.WriteString("\n\n...........................:  Driver Identify Data  :...........................\n")
+	cmd := exec.Command("./sg_inq", t.sgName)
+	// Get a pipe to read from standard out
+	r, _ := cmd.StdoutPipe()
+	// Use the same pipe for standard error
+	cmd.Stderr = cmd.Stdout
+	// Make a new channel which will be used to ensure we get all output
+	done := make(chan bool)
+
+	// Create a scanner which scans r in a line-by-line fashion
+	scanner := bufio.NewScanner(r)
+	scanner.Split(ScanItems)
+	// Use the scanner to scan the output line by line and log it
+	// It's running in a goroutine so that it doesn't block
+	go func() {
+
+		// Read line by line and process it
+		for scanner.Scan() {
+			line := scanner.Text()
+			//HandleLog(label, line)
+			t.logfile.WriteString(line + "\n")
+			Parser(line)
+		}
+		// We're all done, unblock the channel
+		done <- true
+
+	}()
+	// Start the command and check for errors
+	err := cmd.Start()
+	t.cmddict[cmd.Process.Pid] = cmd
+	// Wait for all output to be processed
+	<-done
+	// Wait for the command to finish
+	err = cmd.Wait()
+	delete(t.cmddict, cmd.Process.Pid)
+	if err != nil {
+		if exitError, ok := err.(*exec.ExitError); ok {
+			waitStatus := exitError.Sys().(syscall.WaitStatus)
+			t.logfile.WriteString(fmt.Sprintf("ExitCode=%d\n", waitStatus.ExitStatus()))
+		}
+		return err
+	}
+	// Success
+	waitStatus := cmd.ProcessState.Sys().(syscall.WaitStatus)
+	t.logfile.WriteString(fmt.Sprintf("ExitCode=%d\n", waitStatus.ExitStatus()))
+
+	return nil
+}
+
+func (t *tasks) TestIDCheck() error {
+	// sg_vpd -a /dev/sg4
+	Parser := func(line string) error {
+		return nil
+	}
+	return t.runExe("ID Check", Parser, "./sg_vpd", "-a", t.sgName)
+}
+
+func (t *tasks) TestMaxAddress() error {
+	// hdparm -N
+	var maxaddr string
+	var bSame bool
+	Parser := func(line string) error {
+		bSame = true
+		return nil
+	}
+	err := t.runExe("Set Native Max Address", Parser, "hdparm", "-N", t.linuxName)
+	if err != nil {
+		return err
+	}
+	if bSame {
+		t.logfile.WriteString("Native Max Address is same, No change")
+		return nil
+	}
+	return t.runExe("", Parser, "hdparm", "-N", maxaddr, t.linuxName)
+}
+
+func (t *tasks) TestCryptoScramble() error {
+	var errContinue error
+	Parser := func(line string) error {
+		return nil
+	}
+	err := t.runExe("Crypto Scramble", Parser, "hdparm", "--yes-i-know-what-i-am-doing", "--sanitize-crypto-scramble", t.linuxName)
+	if err != nil {
+		return err
+	}
+	for {
+		err := t.runExe("", Parser, "hdparm", "--sanitize-status", t.linuxName)
+		if err == errContinue {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		break
+	}
+	return nil
+}
+
+func (t *tasks) TestSmartCheck() error {
+	Parser := func(line string) error {
+		return nil
+	}
+	err := t.runExe("Smart Test", Parser, "smartctl", "-a", t.linuxName)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t *tasks) TestModeSense() error {
+	Parser := func(line string) error {
+		return nil
+	}
+	err := t.runExe("Mode Sense Test", Parser, "./sginfo", "-a", t.sgName)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t *tasks) TestGListCheck() error {
+	//get data badsector
+	return nil
+}
+
+func (t *tasks) TestFillData(dd byte) error {
+	Parser := func(line string) error {
+		return nil
+	}
+	err := t.runExe("Fill Data", Parser, "./dskwipe", "-y", "-n", "8000", fmt.Sprintf("0x%2X", dd), t.sgName)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t *tasks) TestHDDScan() error {
+	Parser := func(line string) error {
+		return nil
+	}
+	err := t.runExe("HDD Scan Test", Parser, "./openChest", "-d", t.sgName)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t *tasks) TestButterfly() error {
+	Parser := func(line string) error {
+		return nil
+	}
+	err := t.runExe("Butterfly Test", Parser, "./openChest", "-d", t.sgName)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t *tasks) TestRandom() error {
+	Parser := func(line string) error {
+		return nil
+	}
+	err := t.runExe("Random Blank Test", Parser, "./openChest", "-d", t.sgName)
+	if err != nil {
+		return err
+	}
 	return nil
 }
