@@ -59,4 +59,8 @@ sudo ./openSeaChest_Erase -d /dev/sg4 --ataSecureErase normal --confirm this-wil
 sudo ./openSeaChest_SMART -d /dev/sg3 --smartCheck  #only support SATA
 
 sudo ./openSeaChest_GenericTests -d /dev/sg4 --butterflyTest --minutes 1
+sudo ./openSeaChest_GenericTests -d /dev/sg4 --randomTest --minutes 2
+sudo ./openSeaChest_GenericTests -d /dev/sg4 --bufferTest --minutes 3
+
+sudo ./openSeaChest_Erase -d /dev/sg4 --ataSecureErase normal --confirm this-will-erase-data  #take long time
 ```

@@ -39,7 +39,7 @@ func (t *tasks) Init(ll int) error {
 	t.logfile = logs
 	t.mu = &sync.Mutex{}
 	t.cmddict = make(map[int]*exec.Cmd)
-
+	t.logfile.WriteString(fmt.Sprintf("task start time: %s\n", time.Now().Format("2006-01-02 15:04:05")))
 	sdevname, err := GetString(ll, "linuxname")
 	if err != nil {
 		fmt.Println("linuxname not found")
@@ -62,6 +62,7 @@ func (t *tasks) Init(ll int) error {
 
 // Uninit Exit
 func (t *tasks) Uninit() {
+	t.logfile.WriteString(fmt.Sprintf("task end time: %s\n", time.Now().Format("2006-01-02 15:04:05")))
 	t.logfile.Close()
 }
 
@@ -92,7 +93,6 @@ func (t *tasks) runExe(title string, parser func(line string) error, name string
 
 	// Create a scanner which scans r in a line-by-line fashion
 	scanner := bufio.NewScanner(r)
-	scanner.Split(ScanItems)
 	// Use the scanner to scan the output line by line and log it
 	// It's running in a goroutine so that it doesn't block
 	go func() {
@@ -111,10 +111,10 @@ func (t *tasks) runExe(title string, parser func(line string) error, name string
 	// Start the command and check for errors
 	err := cmd.Start()
 	t.cmddict[cmd.Process.Pid] = cmd
-	// Wait for all output to be processed
-	<-done
 	// Wait for the command to finish
 	err = cmd.Wait()
+	// Wait for all output to be processed
+	<-done
 	delete(t.cmddict, cmd.Process.Pid)
 	if err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
@@ -134,6 +134,9 @@ func (t *tasks) runExe(title string, parser func(line string) error, name string
 func (t *tasks) ReadInquiry() error {
 
 	Parser := func(sline string) {
+		if strings.HasPrefix(sline, "[") {
+			return
+		}
 		slc := strings.Split(sline, ":")
 		for i := range slc {
 			slc[i] = strings.TrimSpace(slc[i])
@@ -154,7 +157,7 @@ func (t *tasks) ReadInquiry() error {
 
 	// Create a scanner which scans r in a line-by-line fashion
 	scanner := bufio.NewScanner(r)
-	scanner.Split(ScanItems)
+	// scanner.Split(ScanItems)
 	// Use the scanner to scan the output line by line and log it
 	// It's running in a goroutine so that it doesn't block
 	go func() {
@@ -175,6 +178,7 @@ func (t *tasks) ReadInquiry() error {
 	t.cmddict[cmd.Process.Pid] = cmd
 	// Wait for all output to be processed
 	<-done
+
 	// Wait for the command to finish
 	err = cmd.Wait()
 	delete(t.cmddict, cmd.Process.Pid)
@@ -194,12 +198,21 @@ func (t *tasks) ReadInquiry() error {
 
 func (t *tasks) DriverIdentifyData() error {
 	// hdparm -I /dev/sdd     //sg_readcap -l /dev/sg4
+	var supported bool
 	Parser := func(sline string) {
+		s := strings.Trim(sline, " \t")
 
+		if s == "Enabled\tSupported:" {
+			supported = true
+			t.logfile.WriteString("find supported List:\n")
+		}
+		if supported {
+			t.logfile.WriteString(s + "\n")
+		}
 	}
 
 	t.logfile.WriteString("\n\n...........................:  Driver Identify Data  :...........................\n")
-	cmd := exec.Command("./sg_inq", t.sgName)
+	cmd := exec.Command("hdparm", "-I", t.sgName)
 	// Get a pipe to read from standard out
 	r, _ := cmd.StdoutPipe()
 	// Use the same pipe for standard error
@@ -209,7 +222,7 @@ func (t *tasks) DriverIdentifyData() error {
 
 	// Create a scanner which scans r in a line-by-line fashion
 	scanner := bufio.NewScanner(r)
-	scanner.Split(ScanItems)
+	// scanner.Split(ScanItems)
 	// Use the scanner to scan the output line by line and log it
 	// It's running in a goroutine so that it doesn't block
 	go func() {
@@ -217,8 +230,8 @@ func (t *tasks) DriverIdentifyData() error {
 		// Read line by line and process it
 		for scanner.Scan() {
 			line := scanner.Text()
-			//HandleLog(label, line)
-			t.logfile.WriteString(line + "\n")
+
+			// t.logfile.WriteString(line + "\n")
 			Parser(line)
 		}
 		// We're all done, unblock the channel
@@ -350,7 +363,7 @@ func (t *tasks) TestButterfly() error {
 	Parser := func(line string) error {
 		return nil
 	}
-	err := t.runExe("Butterfly Test", Parser, "./openChest", "-d", t.sgName)
+	err := t.runExe("Butterfly Test", Parser, "./openSeaChest_GenericTests", "--butterflyTest", "--minutes", "5", "-d", t.sgName)
 	if err != nil {
 		return err
 	}
@@ -361,7 +374,7 @@ func (t *tasks) TestRandom() error {
 	Parser := func(line string) error {
 		return nil
 	}
-	err := t.runExe("Random Blank Test", Parser, "./openChest", "-d", t.sgName)
+	err := t.runExe("Random Blank Test", Parser, "./openSeaChest_GenericTests", "--randomTest", "-d", t.sgName)
 	if err != nil {
 		return err
 	}
