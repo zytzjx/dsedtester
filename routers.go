@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
@@ -102,4 +104,68 @@ func stopTaskHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(msgOK)
 
 	return
+}
+
+// Item support test item
+type Item struct {
+	Name  string `json:"name"`
+	Param string `json:"param"`
+}
+
+// TestConfig test config, it is ordered
+type TestConfig struct {
+	Label int    `json:"label"`
+	Items []Item `json:"items"`
+}
+
+var locks map[int]bool = make(map[int]bool)
+
+func startTestHandler(w http.ResponseWriter, r *http.Request) {
+	//var dst interface{}
+	label, _ := strconv.Atoi(mux.Vars(r)["label"])
+	isRunning, OK := locks[label]
+	if !OK {
+		isRunning = false
+		locks[label] = false
+	}
+	if isRunning {
+		msg := fmt.Sprintf("Label_%d is running", label)
+		http.Error(w, msg, http.StatusLocked)
+		return
+	}
+	if r.Header.Get("Content-Type") != "" {
+		value := r.Header.Get("Content-Type")
+		if value != "application/json" {
+			msg := "Content-Type header is not application/json"
+			http.Error(w, msg, http.StatusUnsupportedMediaType)
+			return
+		}
+	}
+
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		panic(err)
+	}
+	var tc TestConfig
+	if err := json.Unmarshal(body, &tc); err != nil {
+		msg := fmt.Sprintf("Request body contains badly-formed JSON (%v)", err)
+		//return &malformedRequest{status: http.StatusBadRequest, msg: msg}
+		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
+	tc.Label = label
+	fmt.Fprintf(w, "TestConfig: %+v", tc)
+
+}
+
+func stopTestHandler(w http.ResponseWriter, r *http.Request) {
+	label, _ := strconv.Atoi(mux.Vars(r)["label"])
+	isRunning, OK := locks[label]
+	if !OK || !isRunning {
+		msg := fmt.Sprintf("Label_%d task is not Created", label)
+		http.Error(w, msg, http.StatusForbidden)
+		return
+	}
+
+	fmt.Fprintf(w, "TestConfig: %+v", label)
 }

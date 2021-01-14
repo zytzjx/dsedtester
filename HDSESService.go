@@ -480,6 +480,8 @@ func main() {
 	// Add your routes as needed
 	r.HandleFunc("/start/{label:[0-9]+}", startTaskHandler).Methods("GET").Queries("standard", "{standard}")
 	r.HandleFunc("/stop/{label:[0-9]+}", stopTaskHandler).Methods("GET")
+	r.HandleFunc("/starttest/{label:[0-9]+}", startTestHandler).Methods("POST")
+	r.HandleFunc("/stoptest/{label:[0-9]+}", stopTestHandler).Methods("GET")
 
 	CreateRedisPool(GetLabelsCnt())
 	srv := &http.Server{

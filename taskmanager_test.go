@@ -1,7 +1,10 @@
 package main
 
 import (
+	"os"
+	"os/exec"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -41,4 +44,24 @@ func TestTestIDCheck(t *testing.T) {
 	defer ttt.Uninit()
 	ttt.TestIDCheck()
 
+}
+
+func TestTestCryptoScramble(t *testing.T) {
+	logs, err := os.OpenFile("logs/test.log", os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		return
+	}
+	///dev/sde   /dev/sg5
+	///dev/sdd   /dev/sg4
+	task := &tasks{
+		mu:        &sync.Mutex{},
+		logfile:   logs,
+		tasklist:  []string{},
+		lastError: nil,
+		label:     1,
+		cmddict:   map[int]*exec.Cmd{},
+		linuxName: "/dev/sde",
+		sgName:    "/dev/sg5",
+	}
+	assertEqual(t, task.TestCryptoScramble(), nil)
 }

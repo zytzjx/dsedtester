@@ -24,6 +24,35 @@ type tasks struct {
 	sgName    string
 }
 
+// DoTask is Hdd test
+func DoTask(label int, tc TestConfig) {
+	defer func() {
+		locks[label] = false
+	}()
+	task := &tasks{
+		// mu:        &sync.Mutex{},
+		// logfile:   &os.File{},
+		// tasklist:  []string{},
+		lastError: nil,
+		label:     label,
+		// cmddict:   map[int]*exec.Cmd{},
+		linuxName: "",
+		sgName:    "",
+	}
+	err := task.Init(label)
+	defer task.Uninit()
+	if err != nil {
+		return
+	}
+	for _, tt := range tc.Items {
+		task.logIt("start task: " + tt.Name)
+	}
+}
+
+func (t *tasks) logIt(s string) {
+	t.logfile.WriteString(s)
+}
+
 // Init create Log File
 func (t *tasks) Init(ll int) error {
 	t.label = ll
@@ -348,17 +377,6 @@ func (t *tasks) TestFillData(dd byte) error {
 	return nil
 }
 
-func (t *tasks) TestHDDScan() error {
-	Parser := func(line string) error {
-		return nil
-	}
-	err := t.runExe("HDD Scan Test", Parser, "./openChest", "-d", t.sgName)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func (t *tasks) TestButterfly() error {
 	Parser := func(line string) error {
 		return nil
@@ -375,6 +393,17 @@ func (t *tasks) TestRandom() error {
 		return nil
 	}
 	err := t.runExe("Random Blank Test", Parser, "./openSeaChest_GenericTests", "--randomTest", "-d", t.sgName)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t *tasks) TestVerifyData(dd byte) error {
+	Parser := func(line string) error {
+		return nil
+	}
+	err := t.runExe("Verify Data", Parser, "./dskread", "-p", fmt.Sprintf("0x%2X", dd), t.sgName)
 	if err != nil {
 		return err
 	}
