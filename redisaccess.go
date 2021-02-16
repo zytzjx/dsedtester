@@ -165,6 +165,15 @@ func setProgressbar(label int, values []string) error {
 	return client.HSet(ctx, "processing", kv).Err()
 }
 
+//SAdd add array to database
+func SAdd(label int, key string, values []string) (int64, error) {
+	client, ok := clients[label]
+	if !ok {
+		return 0, errors.New("not found label")
+	}
+	return client.SAdd(ctx, key, values).Result()
+}
+
 // GetFloat get float
 func GetFloat(label int, key string) (float32, error) {
 	client, ok := clients[label]

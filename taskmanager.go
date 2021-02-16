@@ -2,16 +2,29 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"path"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 )
+
+//errSanitizeNotSupport SANITIZE feature set is not supported
+var (
+	errSanitizeNotSupport = errors.New("SANITIZE feature set is not supported")
+)
+
+type taskCmd struct {
+	CmdName string `json:"cmdname"`
+	Param   string `json:"param"`
+}
 
 type tasks struct {
 	mu        *sync.Mutex
@@ -22,6 +35,7 @@ type tasks struct {
 	cmddict   map[int]*exec.Cmd
 	linuxName string
 	sgName    string
+	dskInfos  *diskinfos //DISK INFOS
 }
 
 // DoTask is Hdd test
@@ -86,13 +100,40 @@ func (t *tasks) Init(ll int) error {
 		return err
 	}
 	t.sgName = sgName
+	t.dskInfos = &diskinfos{}
+	t.dskInfos.LoadConfig(t.logfile)
 	return nil
 }
 
 // Uninit Exit
 func (t *tasks) Uninit() {
 	t.logfile.WriteString(fmt.Sprintf("task end time: %s\n", time.Now().Format("2006-01-02 15:04:05")))
+	infile := t.logfile.Name()
 	t.logfile.Close()
+	//zip -rm log_1.zip ./log_1.log
+	ext := path.Ext(infile)
+	outfile := infile[0:len(infile)-len(ext)] + time.Now().Format("_20060102T150405") + ".zip"
+
+	cmd := exec.Command("zip", "-rm", outfile, infile)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	if err != nil {
+		//log.Fatal(err)
+		fmt.Println("Log zip failed")
+		return
+	}
+	fmt.Printf("zip: %q\n", out.String())
+	if _, err := os.Stat(outfile); os.IsNotExist(err) {
+		// path/to/whatever does not exist
+		fmt.Printf("Log %q is not exist\n", outfile)
+	}
+	//put to server
+	//curl --insecure -u"fdus":"392potrero" -F"md5=c115cf6c96fb70afbd7aedd5e4dad432"
+	//–F”filetype=TransactionLog” -F”datetime=20201025T154738” -F”pcname=USER-PC”
+	//-F”macaddress=F04DA2DCFAF5” -F”companyid=41” -F”siteid =1” -F”productid=2”
+	//-F"file=@/home/test/temp/log_20201025T154738.zip;type=application/octet-stream" https://mc.futuredial.com/uploadfile
+	UploadLog(outfile)
 }
 
 // GetTaskList for single port to do
@@ -149,12 +190,14 @@ func (t *tasks) runExe(title string, parser func(line string) error, name string
 		if exitError, ok := err.(*exec.ExitError); ok {
 			waitStatus := exitError.Sys().(syscall.WaitStatus)
 			t.logfile.WriteString(fmt.Sprintf("ExitCode=%d\n", waitStatus.ExitStatus()))
+			t.dskInfos.AddErrorcodes(title, waitStatus.ExitStatus())
 		}
 		return err
 	}
 	// Success
 	waitStatus := cmd.ProcessState.Sys().(syscall.WaitStatus)
 	t.logfile.WriteString(fmt.Sprintf("ExitCode=%d\n", waitStatus.ExitStatus()))
+	t.dskInfos.AddErrorcodes(title, waitStatus.ExitStatus())
 
 	return nil
 
@@ -162,8 +205,9 @@ func (t *tasks) runExe(title string, parser func(line string) error, name string
 
 func (t *tasks) ReadInquiry() error {
 
+	//var datas map[string]string = make(map[string]string)
 	Parser := func(sline string) {
-		if strings.HasPrefix(sline, "[") {
+		if strings.HasPrefix(sline, "[") || strings.Index(sline, "=") >= 0 {
 			return
 		}
 		slc := strings.Split(sline, ":")
@@ -171,7 +215,9 @@ func (t *tasks) ReadInquiry() error {
 			slc[i] = strings.TrimSpace(slc[i])
 		}
 		if len(slc) == 2 && slc[0] != "" && slc[1] != "" {
-			Set(t.label, slc[0], slc[1], 0)
+			//Set(t.label, slc[0], slc[1], 0)
+			//datas[slc[0]] = slc[1]
+			t.dskInfos.AddInfo2Map(slc[0], slc[1])
 		}
 	}
 
@@ -215,13 +261,19 @@ func (t *tasks) ReadInquiry() error {
 		if exitError, ok := err.(*exec.ExitError); ok {
 			waitStatus := exitError.Sys().(syscall.WaitStatus)
 			t.logfile.WriteString(fmt.Sprintf("ExitCode=%d\n", waitStatus.ExitStatus()))
+			t.dskInfos.AddErrorcodes("Driver Inquiry Data", waitStatus.ExitStatus())
 		}
 		return err
 	}
 	// Success
 	waitStatus := cmd.ProcessState.Sys().(syscall.WaitStatus)
 	t.logfile.WriteString(fmt.Sprintf("ExitCode=%d\n", waitStatus.ExitStatus()))
-
+	t.dskInfos.AddErrorcodes("Driver Inquiry Data", waitStatus.ExitStatus())
+	// b, err := json.MarshalIndent(datas, "", "  ")
+	// if err != nil {
+	// 	fmt.Println("error:", err)
+	// }
+	// fmt.Print(string(b))
 	return nil
 }
 
@@ -279,14 +331,56 @@ func (t *tasks) DriverIdentifyData() error {
 		if exitError, ok := err.(*exec.ExitError); ok {
 			waitStatus := exitError.Sys().(syscall.WaitStatus)
 			t.logfile.WriteString(fmt.Sprintf("ExitCode=%d\n", waitStatus.ExitStatus()))
+			t.dskInfos.AddErrorcodes("Driver Identify Data", waitStatus.ExitStatus())
 		}
 		return err
 	}
 	// Success
 	waitStatus := cmd.ProcessState.Sys().(syscall.WaitStatus)
 	t.logfile.WriteString(fmt.Sprintf("ExitCode=%d\n", waitStatus.ExitStatus()))
-
+	t.dskInfos.AddErrorcodes("Driver Identify Data", waitStatus.ExitStatus())
 	return nil
+}
+
+func (t *tasks) DriverReadInfo() error {
+	var datas map[string]string = make(map[string]string)
+	var re = regexp.MustCompile(`(?m)^\t([^\t].*?): (.*?)$`)
+	var bfind bool = false
+	//var supportList []string
+	Parser := func(line string) error {
+		if bfind {
+			if strings.HasPrefix(line, "\t\t") {
+				//supportList = append(supportList, strings.Trim(line, "\t "))
+				t.dskInfos.AddSupportList(strings.Trim(line, "\t "))
+				return nil
+			}
+			bfind = false
+		}
+		items := re.FindStringSubmatch(line)
+		if len(items) == 3 {
+			datas[items[1]] = items[2]
+		} else {
+			if line == "\tFeatures Supported:" {
+				bfind = true
+			}
+		}
+
+		return nil
+	}
+	err := t.runExe("DISK Info", Parser, "./openSeaChest_GenericTests", "-i", "-d", t.linuxName)
+	if err != nil {
+		return err
+	}
+	if len(t.dskInfos.supportList) > 0 {
+		AddSet(t.label, "SupportList", t.dskInfos.supportList)
+	}
+	// b, err := json.MarshalIndent(datas, "", "  ")
+	// if err != nil {
+	// 	fmt.Println("error:", err)
+	// }
+	// fmt.Print(string(b))
+	return nil
+
 }
 
 func (t *tasks) TestIDCheck() error {
@@ -301,24 +395,48 @@ func (t *tasks) TestMaxAddress() error {
 	// hdparm -N
 	var maxaddr string
 	var bSame bool
+	var bSupport = true
+	//max sectors   = 23437770752/23437770752, HPA is disabled
+	re, _ := regexp.Compile(`max sectors\s+=\s+(\d+)/(\d+),`)
 	Parser := func(line string) error {
-		bSame = true
+
+		if strings.Contains(line, "SG_IO:") {
+			bSupport = false
+		}
+		items := re.FindStringSubmatch(line)
+		if len(items) == 3 {
+			maxaddr = items[2]
+			if items[1] == items[2] {
+				bSame = true
+			}
+		}
 		return nil
 	}
 	err := t.runExe("Set Native Max Address", Parser, "hdparm", "-N", t.linuxName)
 	if err != nil {
 		return err
 	}
+	if !bSupport {
+		return nil
+	}
 	if bSame {
 		t.logfile.WriteString("Native Max Address is same, No change")
 		return nil
 	}
-	return t.runExe("", Parser, "hdparm", "-N", maxaddr, t.linuxName)
+	//hdparm -Np281323627 --yes-i-know-what-i-am-doing /dev/sdb
+	return t.runExe("", Parser, "hdparm", fmt.Sprintf("-Np%s", maxaddr), "--yes-i-know-what-i-am-doing", t.linuxName)
 }
 
 func (t *tasks) TestCryptoScramble() error {
 	var errContinue error
+	var bDone bool
 	Parser := func(line string) error {
+		// SANITIZE feature set is not supported
+		if strings.Contains(line, "not supported") {
+			return errSanitizeNotSupport
+		} else if strings.Contains(line, "SD0 Sanitize Idle") {
+			bDone = true
+		}
 		return nil
 	}
 	err := t.runExe("Crypto Scramble", Parser, "hdparm", "--yes-i-know-what-i-am-doing", "--sanitize-crypto-scramble", t.linuxName)
@@ -334,7 +452,10 @@ func (t *tasks) TestCryptoScramble() error {
 		if err != nil {
 			return err
 		}
-		break
+		if bDone {
+			break
+		}
+		//break
 	}
 	return nil
 }

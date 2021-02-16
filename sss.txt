@@ -1,0 +1,95 @@
+==========================================================================================
+ openSeaChest_GenericTests - openSeaChest drive utilities - NVMe Enabled
+ Copyright (c) 2014-2020 Seagate Technology LLC and/or its Affiliates, All Rights Reserved
+ openSeaChest_GenericTests Version: 2.0.0-2_1_0 X86_64
+ Build Date: Dec 15 2020
+ Today: Wed Jan 27 15:30:50 2021	User: root
+==========================================================================================
+
+/dev/sg5 - HGST HUH721212ALE600 - 8CJWE1GE - ATA
+	Model Number: HGST HUH721212ALE600
+	Serial Number: 8CJWE1GE
+	Firmware Revision: LEGNT3D0
+	World Wide Name: 5000CCA26FE8A601
+	Drive Capacity (TB/TiB): 12.00/10.91
+	Native Drive Capacity (TB/TiB): 12.00/10.91
+	Temperature Data:
+		Current Temperature (C): 34
+		Highest Temperature (C): 53
+		Lowest Temperature (C): 22
+	Power On Time:  92 days 23 hours 
+	Power On Hours: 2231.00
+	MaxLBA: 23437770751
+	Native MaxLBA: 23437770751
+	Logical Sector Size (B): 512
+	Physical Sector Size (B): 4096
+	Sector Alignment: 0
+	Rotation Rate (RPM): 7200
+	Form Factor: 3.5"
+	Last DST information:
+		Time since last DST (hours): 1903.00
+		DST Status/Result: 0x0
+		DST Test run: 0x1
+	Long Drive Self Test Time:  20 hours 19 minutes 
+	Interface speed:
+		Max Speed (Gb/s): 6.0
+		Negotiated Speed (Gb/s): 6.0
+	Annualized Workload Rate (TB/yr): 242.97
+	Total Bytes Read (TB): 12.61
+	Total Bytes Written (TB): 49.27
+	Encryption Support: Full Disk Encryption
+	Cache Size (MiB): 256.00
+	Read Look-Ahead: Enabled
+	Write Cache: Disabled
+	SMART Status: Good
+	ATA Security Information: Supported
+	Firmware Download Support: Full, Segmented, Deferred
+	Specifications Supported:
+		ACS-2
+		ATA8-ACS
+		ATA/ATAPI-7
+		ATA/ATAPI-6
+		ATA/ATAPI-5
+		ATA/ATAPI-4
+		ATA-3
+		ATA-2
+		SATA 3.2
+		SATA 3.1
+		SATA 3.0
+		SATA 2.6
+		SATA 2.5
+		SATA II: Extensions
+		SATA 1.0a
+		ATA8-AST
+	Features Supported:
+		Sanitize
+		SATA NCQ
+		SATA NCQ Streaming
+		SATA Rebuild Assist
+		SATA Software Settings Preservation [Enabled]
+		SATA In-Order Data Delivery
+		SATA Device Initiated Power Management
+		HPA
+		Power Management
+		Security
+		SMART [Enabled]
+		DCO
+		48bit Address
+		PUIS
+		APM [Enabled]
+		GPL
+		Streaming
+		SMART Self-Test
+		SMART Error Logging
+		EPC
+		Sense Data Reporting
+		SCT Write Same
+		SCT Error Recovery Control
+		SCT Feature Control
+		SCT Data Tables
+		Host Logging
+	Adapter Information:
+		Vendor ID: 1000h
+		Product ID: 0064h
+		Revision: 0002h
+
